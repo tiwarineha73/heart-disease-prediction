@@ -6,3 +6,5 @@ scikit-learn==1.4.2
 jupyter==1.0.0
 notebook==7.2.0
 ipykernel==6.29.4
+streamlit==1.42.0
+joblib==1.4.2
