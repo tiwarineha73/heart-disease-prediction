@@ -46,4 +46,4 @@ elif page == 'Model Insights':
 # Data Analysis Page
 elif page == 'Data Analysis':
     st.subheader('Data Analysis')
-    st.write('Exploratory Data Analysis (EDA) on heart
+    st.write("Exploratory Data Analysis (EDA) on heart disease dataset.")
