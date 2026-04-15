@@ -49,7 +49,7 @@ st.markdown("""
     --cream:  #F5F0EB;
 }
 
-html, body, [class*="css"] {
+html, body, {
     font-family: 'DM Sans', sans-serif;
     background-color: var(--dark);
     color: var(--cream);
@@ -61,10 +61,21 @@ html, body, [class*="css"] {
     border-right: 1px solid var(--border);
 }
 [data-testid="stSidebar"] * { color: var(--cream) !important; }
-
+section[data-testid="stSidebar"] {
+    display: block !important;
+    visibility: visible !important;
+    min-width: 280px !important;
+    max-width: 320px !important;
+    position: relative !important;
+    z-index: 999 !important;
+}
+.main {
+    margin-left: 0 !important;
+}
 /* Remove Streamlit branding */
-#MainMenu, footer, header { visibility: hidden; }
-
+#MainMenu { visibility: hidden; }
+footer { visibility: hidden; }
+header { visibility: hidden; }
 /* Cards */
 .card {
     background: var(--card);
