@@ -9,21 +9,17 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 import seaborn as sns
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score, confusion_matrix
-)
+from sklearn.metrics import accuracy_score, precision_score, recall_score, confusion_matrix
 from sklearn.preprocessing import StandardScaler
-import io
 import time
 import warnings
 warnings.filterwarnings("ignore")
 
 # ─────────────────────────────────────────────
-# PAGE CONFIG
+# PAGE CONFIG  — must be FIRST streamlit call
 # ─────────────────────────────────────────────
 st.set_page_config(
     page_title="CardioSense | Heart Disease Prediction",
@@ -33,180 +29,161 @@ st.set_page_config(
 )
 
 # ─────────────────────────────────────────────
-# GLOBAL STYLES
+# NAVIGATION via session_state
+# ─────────────────────────────────────────────
+if "page" not in st.session_state:
+    st.session_state.page = "Home"
+
+def go(page_name):
+    st.session_state.page = page_name
+
+# ─────────────────────────────────────────────
+# GLOBAL CSS
 # ─────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500;600&display=swap');
 
-:root {
-    --red:    #E5304A;
-    --rose:   #FF6B81;
-    --dark:   #0E0F14;
-    --card:   #16171F;
-    --muted:  #8B8FA8;
-    --border: #2A2B38;
-    --cream:  #F5F0EB;
+html, body, [class*="css"] {
+    font-family: 'DM Sans', sans-serif !important;
+    background-color: #0E0F14 !important;
+    color: #F5F0EB !important;
 }
 
-html, body, {
-    font-family: 'DM Sans', sans-serif;
-    background-color: var(--dark);
-    color: var(--cream);
-}
+/* Hide Streamlit chrome */
+#MainMenu { visibility: hidden; }
+footer    { visibility: hidden; }
+header    { visibility: hidden; }
 
-/* Sidebar */
+/* ─── SIDEBAR — force always open & styled ─── */
 [data-testid="stSidebar"] {
-    background: var(--card) !important;
-    border-right: 1px solid var(--border);
-}
-[data-testid="stSidebar"] * { color: var(--cream) !important; }
-section[data-testid="stSidebar"] {
+    background: #16171F !important;
+    border-right: 1px solid #2A2B38 !important;
+    min-width: 240px !important;
+    max-width: 260px !important;
     display: block !important;
     visibility: visible !important;
-    min-width: 280px !important;
-    max-width: 320px !important;
-    position: relative !important;
-    z-index: 999 !important;
+    transform: none !important;
 }
-.main {
-    margin-left: 0 !important;
+[data-testid="stSidebar"][aria-expanded="false"] {
+    display: block !important;
+    transform: translateX(0) !important;
 }
-/* Remove Streamlit branding */
-#MainMenu { visibility: hidden; }
-footer { visibility: hidden; }
-header { visibility: hidden; }
+[data-testid="collapsedControl"] {
+    display: none !important;
+}
+[data-testid="stSidebar"] * {
+    color: #F5F0EB !important;
+}
+/* Sidebar nav buttons — override Streamlit default button style */
+[data-testid="stSidebar"] .stButton > button {
+    background: transparent !important;
+    color: #8B8FA8 !important;
+    border: none !important;
+    border-radius: 10px !important;
+    padding: 10px 16px !important;
+    text-align: left !important;
+    font-size: 0.9rem !important;
+    font-weight: 500 !important;
+    width: 100% !important;
+    transition: background 0.15s, color 0.15s !important;
+    margin-bottom: 2px !important;
+    box-shadow: none !important;
+}
+[data-testid="stSidebar"] .stButton > button:hover {
+    background: #1e1f2a !important;
+    color: #F5F0EB !important;
+    opacity: 1 !important;
+}
+
 /* Cards */
 .card {
-    background: var(--card);
-    border: 1px solid var(--border);
+    background: #16171F;
+    border: 1px solid #2A2B38;
     border-radius: 16px;
     padding: 28px 32px;
     margin-bottom: 20px;
 }
-.card-red {
-    background: linear-gradient(135deg, #2a0a10 0%, #1a0608 100%);
-    border: 1px solid #5a1020;
-    border-radius: 16px;
-    padding: 28px 32px;
-    margin-bottom: 20px;
-}
-
-/* Headings */
-h1 {
-    font-family: 'DM Serif Display', serif !important;
-    color: var(--cream) !important;
-    letter-spacing: -0.5px;
-}
-h2 {
-    font-family: 'DM Serif Display', serif !important;
-    color: var(--cream) !important;
-    font-size: 1.6rem !important;
-}
-h3 { color: var(--muted) !important; font-weight: 500 !important; }
-
-/* Metric tiles */
 .metric-tile {
-    background: var(--card);
-    border: 1px solid var(--border);
+    background: #16171F;
+    border: 1px solid #2A2B38;
     border-radius: 12px;
-    padding: 20px;
+    padding: 22px 16px;
     text-align: center;
 }
 .metric-value {
     font-family: 'DM Serif Display', serif;
-    font-size: 2.4rem;
-    color: var(--rose);
+    font-size: 2.2rem;
+    color: #FF6B81;
     line-height: 1;
 }
 .metric-label {
-    font-size: 0.78rem;
-    color: var(--muted);
+    font-size: 0.72rem;
+    color: #8B8FA8;
     text-transform: uppercase;
     letter-spacing: 1.5px;
-    margin-top: 6px;
+    margin-top: 7px;
 }
-
-/* Tag badges */
-.badge {
-    display: inline-block;
-    padding: 4px 12px;
-    border-radius: 100px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.5px;
+.result-high {
+    background: linear-gradient(135deg,#3a0a12,#2a0a10);
+    border: 2px solid #E5304A;
+    border-radius: 16px;
+    padding: 36px 28px;
+    text-align: center;
 }
-.badge-red   { background: #3a0a12; color: var(--rose); border: 1px solid #5a1020; }
-.badge-green { background: #0a2a15; color: #5ce698;     border: 1px solid #1a5a30; }
-.badge-blue  { background: #0a1a3a; color: #6ab4ff;     border: 1px solid #1a3a6a; }
-
-/* Streamlit inputs */
-[data-testid="stSelectbox"] > div, [data-testid="stNumberInput"] > div {
+.result-low {
+    background: linear-gradient(135deg,#0a2a15,#071a0e);
+    border: 2px solid #2a8a4a;
+    border-radius: 16px;
+    padding: 36px 28px;
+    text-align: center;
+}
+.tip-card {
+    background: #1a1b25;
+    border-left: 3px solid #FF6B81;
+    border-radius: 0 10px 10px 0;
+    padding: 13px 18px;
+    margin-bottom: 9px;
+    font-size: 0.88rem;
+    color: #c5c8da;
+}
+.badge-red {
+    display: inline-block; padding: 4px 12px; border-radius: 100px;
+    font-size: .75rem; font-weight: 600;
+    background: #3a0a12; color: #FF6B81; border: 1px solid #5a1020;
+}
+.badge-green {
+    display: inline-block; padding: 4px 12px; border-radius: 100px;
+    font-size: .75rem; font-weight: 600;
+    background: #0a2a15; color: #5ce698; border: 1px solid #1a5a30;
+}
+div[data-testid="stForm"] { border: none !important; padding: 0 !important; }
+[data-testid="stNumberInput"] input,
+[data-testid="stSelectbox"] > div > div {
     background: #1e1f2a !important;
-    border-radius: 10px !important;
+    border: 1px solid #2A2B38 !important;
+    border-radius: 8px !important;
+    color: #F5F0EB !important;
 }
-.stSlider > div { color: var(--rose) !important; }
-
-/* Buttons */
-.stButton > button {
-    background: linear-gradient(135deg, var(--red), #c0203a) !important;
-    color: white !important;
+/* Main area buttons */
+.stButton > button, .stDownloadButton > button {
+    background: linear-gradient(135deg,#E5304A,#c0203a) !important;
+    color: #fff !important;
     border: none !important;
     border-radius: 10px !important;
     padding: 12px 28px !important;
     font-family: 'DM Sans', sans-serif !important;
     font-weight: 600 !important;
     font-size: 0.95rem !important;
-    letter-spacing: 0.3px !important;
-    transition: opacity 0.2s !important;
+    transition: opacity .2s !important;
 }
-.stButton > button:hover { opacity: 0.85 !important; }
-
-/* Divider */
-hr { border-color: var(--border) !important; margin: 32px 0 !important; }
-
-/* Result boxes */
-.result-high {
-    background: linear-gradient(135deg, #3a0a12, #2a0a10);
-    border: 2px solid var(--red);
-    border-radius: 16px;
-    padding: 32px;
-    text-align: center;
+.stButton > button:hover, .stDownloadButton > button:hover {
+    opacity: 0.82 !important;
 }
-.result-low {
-    background: linear-gradient(135deg, #0a2a15, #071a0e);
-    border: 2px solid #2a8a4a;
-    border-radius: 16px;
-    padding: 32px;
-    text-align: center;
-}
-.result-title {
-    font-family: 'DM Serif Display', serif;
-    font-size: 2rem;
-    margin-bottom: 8px;
-}
-
-/* Tip cards */
-.tip-card {
-    background: #1a1b25;
-    border-left: 3px solid var(--rose);
-    border-radius: 0 10px 10px 0;
-    padding: 14px 18px;
-    margin-bottom: 10px;
-    font-size: 0.9rem;
-}
-
-/* Sidebar nav labels */
-.nav-label {
-    font-size: 0.7rem;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    margin: 20px 0 6px 0;
-}
-
-/* Matplotlib dark theme helper */
-.stImage > img { border-radius: 12px; }
+hr { border-color: #2A2B38 !important; margin: 30px 0 !important; }
+h1 { font-family:'DM Serif Display',serif !important; color:#F5F0EB !important; }
+h2 { font-family:'DM Serif Display',serif !important; color:#F5F0EB !important; font-size:1.55rem !important; }
+h3 { color:#c5c8da !important; font-weight:500 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -216,19 +193,13 @@ hr { border-color: var(--border) !important; margin: 32px 0 !important; }
 # ─────────────────────────────────────────────
 @st.cache_data
 def load_data():
-    """Load Cleveland Heart Disease dataset via sklearn or synthetic fallback."""
     try:
-        url = (
-            "https://archive.ics.uci.edu/ml/machine-learning-databases/"
-            "heart-disease/processed.cleveland.data"
-        )
-        cols = [
-            "age", "sex", "cp", "trestbps", "chol", "fbs", "restecg",
-            "thalach", "exang", "oldpeak", "slope", "ca", "thal", "target"
-        ]
+        url = ("https://archive.ics.uci.edu/ml/machine-learning-databases/"
+               "heart-disease/processed.cleveland.data")
+        cols = ["age","sex","cp","trestbps","chol","fbs","restecg",
+                "thalach","exang","oldpeak","slope","ca","thal","target"]
         df = pd.read_csv(url, names=cols, na_values="?")
     except Exception:
-        # Synthetic fallback so app works offline / on Streamlit Cloud
         np.random.seed(42)
         n = 303
         df = pd.DataFrame({
@@ -252,759 +223,599 @@ def load_data():
     return df
 
 
+FEATURES = ["age","sex","cp","trestbps","chol","fbs",
+            "restecg","thalach","exang","oldpeak","slope","ca","thal"]
+
 @st.cache_resource
-def train_model(df):
-    """Train Random Forest model; return model, scaler, metrics, feature names."""
-    features = [
-        "age", "sex", "cp", "trestbps", "chol", "fbs",
-        "restecg", "thalach", "exang", "oldpeak", "slope", "ca", "thal"
-    ]
-    X = df[features]
-    y = df["target"]
-
+def train_model(_df):
+    X = _df[FEATURES]
+    y = _df["target"]
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
-
-    scaler = StandardScaler()
-    X_train_s = scaler.fit_transform(X_train)
-    X_test_s  = scaler.transform(X_test)
-
-    model = RandomForestClassifier(
-        n_estimators=200, max_depth=8,
-        min_samples_split=4, random_state=42
-    )
-    model.fit(X_train_s, y_train)
-    y_pred = model.predict(X_test_s)
-
-    metrics = {
-        "accuracy":  round(accuracy_score(y_test, y_pred) * 100, 1),
-        "precision": round(precision_score(y_test, y_pred) * 100, 1),
-        "recall":    round(recall_score(y_test, y_pred) * 100, 1),
-        "cm":        confusion_matrix(y_test, y_pred),
-        "importance": dict(zip(features, model.feature_importances_)),
+        X, y, test_size=0.2, random_state=42, stratify=y)
+    sc = StandardScaler()
+    Xtr = sc.fit_transform(X_train)
+    Xte = sc.transform(X_test)
+    clf = RandomForestClassifier(n_estimators=200, max_depth=8,
+                                  min_samples_split=4, random_state=42)
+    clf.fit(Xtr, y_train)
+    yp = clf.predict(Xte)
+    met = {
+        "accuracy":   round(accuracy_score(y_test, yp) * 100, 1),
+        "precision":  round(precision_score(y_test, yp) * 100, 1),
+        "recall":     round(recall_score(y_test, yp) * 100, 1),
+        "cm":         confusion_matrix(y_test, yp),
+        "importance": dict(zip(FEATURES, clf.feature_importances_)),
     }
-    return model, scaler, metrics, features
+    return clf, sc, met
+
+
+df = load_data()
+model, scaler, metrics = train_model(df)
 
 
 # ─────────────────────────────────────────────
 # CHART THEME
 # ─────────────────────────────────────────────
-def set_dark_style():
+def dark_theme():
     plt.rcParams.update({
-        "figure.facecolor":  "#16171F",
-        "axes.facecolor":    "#1e1f2a",
-        "axes.edgecolor":    "#2A2B38",
-        "axes.labelcolor":   "#8B8FA8",
-        "xtick.color":       "#8B8FA8",
-        "ytick.color":       "#8B8FA8",
-        "text.color":        "#F5F0EB",
-        "grid.color":        "#2A2B38",
-        "grid.linestyle":    "--",
-        "grid.alpha":        0.6,
+        "figure.facecolor": "#16171F",
+        "axes.facecolor":   "#1e1f2a",
+        "axes.edgecolor":   "#2A2B38",
+        "axes.labelcolor":  "#8B8FA8",
+        "xtick.color":      "#8B8FA8",
+        "ytick.color":      "#8B8FA8",
+        "text.color":       "#F5F0EB",
+        "grid.color":       "#2A2B38",
+        "grid.linestyle":   "--",
+        "grid.alpha":       0.5,
     })
 
 
 # ─────────────────────────────────────────────
 # REPORT GENERATOR
 # ─────────────────────────────────────────────
-def generate_report(inputs: dict, prediction: int, prob: float) -> str:
-    risk_label = "HIGH RISK — Heart Disease Detected" if prediction == 1 else "LOW RISK — No Heart Disease Detected"
-    risk_pct   = f"{prob * 100:.1f}%"
-
-    tips_high = [
-        "Consult a cardiologist immediately.",
-        "Monitor blood pressure and cholesterol regularly.",
-        "Adopt a heart-healthy diet (low sodium, low saturated fat).",
-        "Engage in light aerobic activity as advised by your doctor.",
-        "Avoid smoking and limit alcohol consumption.",
+def make_report(inp, pred, prob):
+    cp_map    = {0:"Typical Angina",1:"Atypical Angina",2:"Non-Anginal Pain",3:"Asymptomatic"}
+    slope_map = {0:"Upsloping",1:"Flat",2:"Downsloping"}
+    thal_map  = {3.0:"Normal",6.0:"Fixed Defect",7.0:"Reversable Defect"}
+    tips_h = ["Consult a cardiologist promptly.",
+               "Monitor BP and cholesterol weekly.",
+               "Follow a low-sodium, heart-healthy diet.",
+               "Avoid smoking; limit alcohol.",
+               "Light aerobic exercise as medically advised."]
+    tips_l = ["Maintain a balanced plant-rich diet.",
+               "Aim for 150 min/week moderate exercise.",
+               "Annual cardiac check-up recommended.",
+               "Manage stress via mindfulness or yoga.",
+               "Keep cholesterol and BP in healthy ranges."]
+    tips  = tips_h if pred == 1 else tips_l
+    label = "HIGH RISK — Heart Disease Detected" if pred == 1 else "LOW RISK — No Disease Detected"
+    lines = [
+        "╔══════════════════════════════════════════════════════╗",
+        "║          CARDIOSENSE — HEART RISK REPORT             ║",
+        "╚══════════════════════════════════════════════════════╝",
+        "",
+        f"  Result     : {label}",
+        f"  Confidence : {prob*100:.1f}%",
+        "",
+        "─" * 56,
+        "  PATIENT INPUT SUMMARY",
+        "─" * 56,
+        f"  Age                      : {inp['age']} yrs",
+        f"  Sex                      : {'Male' if inp['sex']==1 else 'Female'}",
+        f"  Chest Pain Type          : {cp_map.get(inp['cp'], inp['cp'])}",
+        f"  Resting BP               : {inp['trestbps']} mm Hg",
+        f"  Cholesterol              : {inp['chol']} mg/dl",
+        f"  Fasting Blood Sugar>120  : {'Yes' if inp['fbs']==1 else 'No'}",
+        f"  Resting ECG              : {['Normal','ST-T Abnormality','LV Hypertrophy'][inp['restecg']]}",
+        f"  Max Heart Rate           : {inp['thalach']} bpm",
+        f"  Exercise Angina          : {'Yes' if inp['exang']==1 else 'No'}",
+        f"  ST Depression            : {inp['oldpeak']}",
+        f"  ST Slope                 : {slope_map.get(inp['slope'], inp['slope'])}",
+        f"  Major Vessels (blocked)  : {inp['ca']}",
+        f"  Thalassemia              : {thal_map.get(inp['thal'], inp['thal'])}",
+        "",
+        "─" * 56,
+        "  RECOMMENDATIONS",
+        "─" * 56,
+    ] + [f"  {i+1}. {t}" for i, t in enumerate(tips)] + [
+        "",
+        "─" * 56,
+        "  DISCLAIMER: Not a substitute for medical advice.",
+        "  Always consult a qualified healthcare professional.",
+        "═" * 56,
     ]
-    tips_low = [
-        "Maintain a balanced, nutritious diet.",
-        "Aim for 150 minutes of moderate exercise per week.",
-        "Schedule annual cardiac check-ups.",
-        "Manage stress through mindfulness or yoga.",
-        "Keep cholesterol and blood pressure in healthy ranges.",
-    ]
-    tips = tips_high if prediction == 1 else tips_low
-
-    chest_pain_map = {0: "Typical Angina", 1: "Atypical Angina",
-                      2: "Non-Anginal Pain", 3: "Asymptomatic"}
-    slope_map      = {0: "Upsloping", 1: "Flat", 2: "Downsloping"}
-    thal_map       = {3.0: "Normal", 6.0: "Fixed Defect", 7.0: "Reversable Defect"}
-
-    report = f"""
-╔══════════════════════════════════════════════════════════════════╗
-║               CARDIOSENSE — HEART RISK REPORT                    ║
-╚══════════════════════════════════════════════════════════════════╝
-
-ASSESSMENT RESULT
-─────────────────────────────────────────────────────────
-  {risk_label}
-  Confidence Score : {risk_pct}
-
-PATIENT INPUT SUMMARY
-─────────────────────────────────────────────────────────
-  Age                     : {inputs['age']} years
-  Sex                     : {'Male' if inputs['sex'] == 1 else 'Female'}
-  Chest Pain Type         : {chest_pain_map.get(inputs['cp'], inputs['cp'])}
-  Resting Blood Pressure  : {inputs['trestbps']} mm Hg
-  Cholesterol             : {inputs['chol']} mg/dl
-  Fasting Blood Sugar > 120: {'Yes' if inputs['fbs'] == 1 else 'No'}
-  Resting ECG             : {['Normal','ST-T Wave Abnormality','Left Ventricular Hypertrophy'][inputs['restecg']]}
-  Max Heart Rate Achieved : {inputs['thalach']} bpm
-  Exercise-Induced Angina : {'Yes' if inputs['exang'] == 1 else 'No'}
-  ST Depression            : {inputs['oldpeak']}
-  Slope of Peak ST Segment: {slope_map.get(inputs['slope'], inputs['slope'])}
-  Major Vessels Colored   : {inputs['ca']}
-  Thalassemia             : {thal_map.get(inputs['thal'], inputs['thal'])}
-
-PERSONALISED RECOMMENDATIONS
-─────────────────────────────────────────────────────────
-""" + "\n".join(f"  {i+1}. {tip}" for i, tip in enumerate(tips)) + """
-
-─────────────────────────────────────────────────────────
-DISCLAIMER: This tool is for informational purposes only
-and does not constitute medical advice. Always consult a
-qualified healthcare professional for diagnosis and treatment.
-══════════════════════════════════════════════════════════
-"""
-    return report
+    return "\n".join(lines)
 
 
-# ─────────────────────────────────────────────
-# SIDEBAR NAVIGATION
-# ─────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════
+#  SIDEBAR  — session_state button navigation
+# ═══════════════════════════════════════════════════════════════
 with st.sidebar:
     st.markdown("""
-    <div style='padding: 10px 0 24px 0;'>
-        <div style='font-size:1.8rem; font-family:"DM Serif Display",serif;
-                    color:#F5F0EB; letter-spacing:-0.5px;'>🫀 CardioSense</div>
-        <div style='font-size:0.78rem; color:#8B8FA8; margin-top:4px;
-                    letter-spacing:1px; text-transform:uppercase;'>
+    <div style='padding:24px 16px 20px;border-bottom:1px solid #2A2B38;margin-bottom:8px;'>
+        <div style='font-family:"DM Serif Display",serif;font-size:1.5rem;
+                    color:#F5F0EB;letter-spacing:-0.3px;line-height:1.2;'>
+            🫀 CardioSense
+        </div>
+        <div style='font-size:.67rem;color:#555770;margin-top:5px;
+                    letter-spacing:1.5px;text-transform:uppercase;'>
             Heart Risk Intelligence
         </div>
     </div>
+    <div style='font-size:.65rem;letter-spacing:2px;text-transform:uppercase;
+                color:#555770;padding:16px 16px 6px;'>Navigate</div>
     """, unsafe_allow_html=True)
 
-    st.markdown("<div class='nav-label'>Navigate</div>", unsafe_allow_html=True)
-    page = st.radio(
-        label="",
-        options=["🏠  Home", "🔬  Prediction", "📊  Data Analysis",
-                 "🧠  Model Insights", "📄  Download Report"],
-        label_visibility="collapsed",
-    )
-    st.markdown("---")
+    NAV_PAGES = [
+        ("🏠", "Home"),
+        ("🔬", "Prediction"),
+        ("📊", "Data Analysis"),
+        ("🧠", "Model Insights"),
+        ("📄", "Download Report"),
+    ]
+
+    for icon, name in NAV_PAGES:
+        is_active = (st.session_state.page == name)
+        # Active page gets highlighted via inline style injected around the button
+        if is_active:
+            st.markdown(f"""
+            <div style='background:linear-gradient(90deg,#3a0a12,#2a0a10);
+                        border-left:3px solid #E5304A;border-radius:10px;
+                        margin-bottom:2px;'>
+            """, unsafe_allow_html=True)
+
+        clicked = st.button(f"{icon}  {name}", key=f"nav_{name}",
+                            use_container_width=True)
+        if clicked:
+            go(name)
+            st.rerun()
+
+        if is_active:
+            st.markdown("</div>", unsafe_allow_html=True)
+
     st.markdown("""
-    <div style='font-size:0.75rem; color:#555770; line-height:1.6;'>
-        Model trained on the Cleveland Heart Disease dataset (n = 303).<br><br>
-        <em>Not a substitute for professional medical advice.</em>
+    <div style='margin-top:36px;padding:0 16px;font-size:.7rem;
+                color:#404258;line-height:1.8;'>
+        Trained on Cleveland Heart Disease<br>dataset (n = 303).<br><br>
+        <em>Not medical advice.</em>
     </div>
     """, unsafe_allow_html=True)
 
-# Load data & model once
-df      = load_data()
-model, scaler, metrics, features = train_model(df)
+
+# Active page
+PAGE = st.session_state.page
 
 
-# ═══════════════════════════════════════════
-#  PAGE 1 — HOME
-# ═══════════════════════════════════════════
-if page == "🏠  Home":
+# ═══════════════════════════════════════════════════════════════
+#  PAGE — HOME
+# ═══════════════════════════════════════════════════════════════
+if PAGE == "Home":
     st.markdown("""
-    <div style='padding: 40px 0 20px 0;'>
-        <div style='font-size:0.8rem; color:#E5304A; text-transform:uppercase;
-                    letter-spacing:3px; margin-bottom:10px;'>
+    <div style='padding:36px 0 16px;'>
+        <div style='font-size:.75rem;color:#E5304A;text-transform:uppercase;
+                    letter-spacing:3px;margin-bottom:10px;'>
             AI-Powered Health Assessment
         </div>
-        <h1 style='font-size:3rem; line-height:1.15; margin:0;'>
+        <h1 style='font-size:2.8rem;line-height:1.18;margin:0;'>
             Know Your Heart.<br>Before It's Too Late.
         </h1>
-        <p style='color:#8B8FA8; max-width:560px; margin-top:18px;
-                  font-size:1.05rem; line-height:1.7;'>
-            CardioSense uses a machine learning model trained on clinical patient
-            records to assess your risk of heart disease — instantly, with an
-            explainable confidence score.
+        <p style='color:#8B8FA8;max-width:540px;margin-top:16px;
+                  font-size:1rem;line-height:1.75;'>
+            CardioSense uses a machine-learning model trained on clinical
+            patient records to assess your heart disease risk — instantly,
+            with an explainable confidence score.
         </p>
     </div>
     """, unsafe_allow_html=True)
 
-    # Quick-stat strip
     c1, c2, c3, c4 = st.columns(4)
-    stats = [
-        (f"{metrics['accuracy']}%", "Model Accuracy"),
-        ("303",  "Patient Records"),
-        ("13",   "Clinical Features"),
-        ("2-min","Assessment Time"),
-    ]
-    for col, (val, lbl) in zip([c1, c2, c3, c4], stats):
-        with col:
-            st.markdown(f"""
-            <div class='metric-tile'>
-                <div class='metric-value'>{val}</div>
-                <div class='metric-label'>{lbl}</div>
-            </div>
-            """, unsafe_allow_html=True)
+    for col, v, l in zip(
+        [c1,c2,c3,c4],
+        [f"{metrics['accuracy']}%","303","13","2 min"],
+        ["Model Accuracy","Patient Records","Clinical Features","Assessment Time"]
+    ):
+        col.markdown(f"""
+        <div class='metric-tile'>
+            <div class='metric-value'>{v}</div>
+            <div class='metric-label'>{l}</div>
+        </div>""", unsafe_allow_html=True)
 
     st.markdown("---")
-
-    # How it works
     st.markdown("## How It Works")
-    cols = st.columns(3)
-    steps = [
-        ("01", "Input Clinical Data",
-         "Enter your health metrics — age, cholesterol, ECG results, and more."),
-        ("02", "AI Analyses Risk",
-         "Our Random Forest model processes your data and calculates a risk probability."),
-        ("03", "Download Your Report",
-         "Get a personalised PDF-ready report with risk level and health recommendations."),
-    ]
-    for col, (num, title, desc) in zip(cols, steps):
-        with col:
-            st.markdown(f"""
-            <div class='card'>
-                <div style='font-family:"DM Serif Display",serif; font-size:2.5rem;
-                            color:#2A2B38; line-height:1;'>{num}</div>
-                <div style='font-weight:600; font-size:1rem; margin:10px 0 8px;
-                            color:#F5F0EB;'>{title}</div>
-                <div style='font-size:0.88rem; color:#8B8FA8; line-height:1.6;'>{desc}</div>
-            </div>
-            """, unsafe_allow_html=True)
+    h1, h2, h3 = st.columns(3)
+    for col, n, title, desc in zip(
+        [h1,h2,h3],
+        ["01","02","03"],
+        ["Input Clinical Data","AI Analyses Risk","Download Report"],
+        ["Enter your health metrics — age, cholesterol, ECG results, and more.",
+         "Our Random Forest model processes your data and calculates risk probability.",
+         "Get a personalised report with risk level and health recommendations."]
+    ):
+        col.markdown(f"""
+        <div class='card'>
+            <div style='font-family:"DM Serif Display",serif;font-size:2.2rem;
+                        color:#2A2B38;line-height:1;'>{n}</div>
+            <div style='font-weight:600;font-size:.95rem;margin:10px 0 7px;
+                        color:#F5F0EB;'>{title}</div>
+            <div style='font-size:.85rem;color:#8B8FA8;line-height:1.65;'>{desc}</div>
+        </div>""", unsafe_allow_html=True)
 
     st.markdown("---")
-
-    # Key risk factors
     st.markdown("## Key Risk Factors Monitored")
     factors = [
-        ("🫀", "Chest Pain Type", "Strong predictor — type matters as much as presence."),
-        ("🩸", "Cholesterol",     "High LDL levels correlate strongly with disease."),
-        ("⚡", "ST Depression",   "Exercise-induced ST changes indicate cardiac stress."),
-        ("🔬", "Vessel Blockage", "Fluoroscopy-detected blockages directly signal risk."),
-        ("💓", "Max Heart Rate",  "Lower achieved rate may suggest compromised cardiac output."),
-        ("🧬", "Thalassemia",     "Blood disorder status affects heart workload."),
+        ("🫀","Chest Pain Type","Type of pain is a strong predictor."),
+        ("🩸","Cholesterol","High LDL levels correlate with disease."),
+        ("⚡","ST Depression","Exercise ST changes signal cardiac stress."),
+        ("🔬","Vessel Blockage","Fluoroscopy-detected blocks = direct risk."),
+        ("💓","Max Heart Rate","Lower achieved rate may indicate problems."),
+        ("🧬","Thalassemia","Blood disorder status affects heart load."),
     ]
-    r1, r2 = st.columns(2)
-    for i, (icon, name, desc) in enumerate(factors):
-        col = r1 if i % 2 == 0 else r2
-        with col:
-            st.markdown(f"""
-            <div style='display:flex; gap:14px; align-items:flex-start;
-                        background:#16171F; border:1px solid #2A2B38;
-                        border-radius:12px; padding:16px; margin-bottom:12px;'>
-                <div style='font-size:1.5rem;'>{icon}</div>
-                <div>
-                    <div style='font-weight:600; font-size:0.95rem;
-                                color:#F5F0EB;'>{name}</div>
-                    <div style='font-size:0.83rem; color:#8B8FA8;
-                                margin-top:4px; line-height:1.5;'>{desc}</div>
-                </div>
+    fl, fr = st.columns(2)
+    for i, (ico, nm, dsc) in enumerate(factors):
+        (fl if i%2==0 else fr).markdown(f"""
+        <div style='display:flex;gap:14px;align-items:flex-start;
+                    background:#16171F;border:1px solid #2A2B38;
+                    border-radius:12px;padding:15px;margin-bottom:10px;'>
+            <div style='font-size:1.4rem;'>{ico}</div>
+            <div>
+                <div style='font-weight:600;font-size:.93rem;color:#F5F0EB;'>{nm}</div>
+                <div style='font-size:.82rem;color:#8B8FA8;margin-top:3px;
+                            line-height:1.5;'>{dsc}</div>
             </div>
-            """, unsafe_allow_html=True)
+        </div>""", unsafe_allow_html=True)
 
 
-# ═══════════════════════════════════════════
-#  PAGE 2 — PREDICTION
-# ═══════════════════════════════════════════
-elif page == "🔬  Prediction":
+# ═══════════════════════════════════════════════════════════════
+#  PAGE — PREDICTION
+# ═══════════════════════════════════════════════════════════════
+elif PAGE == "Prediction":
     st.markdown("## 🔬 Heart Disease Risk Assessment")
-    st.markdown("""
-    <p style='color:#8B8FA8; margin-bottom:28px;'>
-        Complete all fields accurately for the most reliable prediction.
-    </p>
-    """, unsafe_allow_html=True)
+    st.markdown("<p style='color:#8B8FA8;margin-bottom:20px;'>"
+                "Fill every field accurately for the most reliable result.</p>",
+                unsafe_allow_html=True)
 
-    with st.form("prediction_form"):
-        # — Section A: Demographics
+    with st.form("pred_form"):
         st.markdown("### 👤 Demographics")
         a1, a2 = st.columns(2)
-        with a1:
-            age = st.number_input("Age (years)", min_value=18, max_value=100,
-                                  value=50, step=1)
-        with a2:
-            sex = st.selectbox("Biological Sex", ["Male", "Female"])
-            sex_val = 1 if sex == "Male" else 0
+        age = a1.number_input("Age (years)", 18, 100, 50)
+        sex = a2.selectbox("Biological Sex", ["Male","Female"])
 
-        # — Section B: Symptoms
         st.markdown("### 🩺 Symptoms & Vitals")
         b1, b2 = st.columns(2)
-        with b1:
-            cp_opts = {
-                "Typical Angina": 0,
-                "Atypical Angina": 1,
-                "Non-Anginal Pain": 2,
-                "Asymptomatic": 3,
-            }
-            cp = st.selectbox("Chest Pain Type", list(cp_opts.keys()))
-            cp_val = cp_opts[cp]
+        cp_map  = {"Typical Angina":0,"Atypical Angina":1,
+                   "Non-Anginal Pain":2,"Asymptomatic":3}
+        ecg_map = {"Normal":0,"ST-T Wave Abnormality":1,"LV Hypertrophy":2}
+        cp       = b1.selectbox("Chest Pain Type", list(cp_map))
+        trestbps = b1.number_input("Resting Blood Pressure (mm Hg)", 80, 220, 130)
+        fbs      = b1.selectbox("Fasting Blood Sugar > 120 mg/dl", ["No","Yes"])
+        chol     = b2.number_input("Serum Cholesterol (mg/dl)", 100, 600, 246)
+        restecg  = b2.selectbox("Resting ECG Results", list(ecg_map))
 
-            trestbps = st.number_input("Resting Blood Pressure (mm Hg)",
-                                       min_value=80, max_value=220, value=130)
-            fbs = st.selectbox("Fasting Blood Sugar > 120 mg/dl",
-                               ["No", "Yes"])
-            fbs_val = 1 if fbs == "Yes" else 0
-
-        with b2:
-            chol = st.number_input("Serum Cholesterol (mg/dl)",
-                                   min_value=100, max_value=600, value=246)
-            restecg_opts = {
-                "Normal": 0,
-                "ST-T Wave Abnormality": 1,
-                "Left Ventricular Hypertrophy": 2,
-            }
-            restecg = st.selectbox("Resting ECG Results",
-                                   list(restecg_opts.keys()))
-            restecg_val = restecg_opts[restecg]
-
-        # — Section C: Exercise Data
-        st.markdown("### 🏃 Exercise Test Results")
+        st.markdown("### 🏃 Exercise Test")
         c1_, c2_ = st.columns(2)
-        with c1_:
-            thalach = st.number_input("Max Heart Rate Achieved (bpm)",
-                                      min_value=60, max_value=220, value=150)
-            exang = st.selectbox("Exercise-Induced Angina", ["No", "Yes"])
-            exang_val = 1 if exang == "Yes" else 0
+        slope_map = {"Upsloping (good)":0,"Flat":1,"Downsloping (bad)":2}
+        thalach   = c1_.number_input("Max Heart Rate Achieved (bpm)", 60, 220, 150)
+        exang     = c1_.selectbox("Exercise-Induced Angina", ["No","Yes"])
+        oldpeak   = c2_.slider("ST Depression (oldpeak)", 0.0, 6.2, 1.0, 0.1)
+        slope     = c2_.selectbox("Slope of Peak ST Segment", list(slope_map))
 
-        with c2_:
-            oldpeak = st.slider("ST Depression (oldpeak)",
-                                min_value=0.0, max_value=6.2,
-                                value=1.0, step=0.1)
-            slope_opts = {
-                "Upsloping (good sign)": 0,
-                "Flat": 1,
-                "Downsloping (bad sign)": 2,
-            }
-            slope = st.selectbox("Slope of Peak Exercise ST Segment",
-                                 list(slope_opts.keys()))
-            slope_val = slope_opts[slope]
-
-        # — Section D: Diagnostics
-        st.markdown("### 🔬 Diagnostic Results")
+        st.markdown("### 🔬 Diagnostics")
         d1, d2 = st.columns(2)
-        with d1:
-            ca_opts = {
-                "0 — None blocked": 0,
-                "1 — One blocked": 1,
-                "2 — Two blocked": 2,
-                "3 — Three blocked": 3,
-            }
-            ca = st.selectbox("Major Blood Vessels (Fluoroscopy)",
-                              list(ca_opts.keys()))
-            ca_val = ca_opts[ca]
-
-        with d2:
-            thal_opts = {
-                "Normal": 3.0,
-                "Fixed Defect": 6.0,
-                "Reversable Defect": 7.0,
-            }
-            thal = st.selectbox("Thalassemia (Blood Disorder)",
-                                list(thal_opts.keys()))
-            thal_val = thal_opts[thal]
+        ca_map   = {"0 — None":0,"1 — One":1,"2 — Two":2,"3 — Three":3}
+        thal_map = {"Normal":3.0,"Fixed Defect":6.0,"Reversable Defect":7.0}
+        ca   = d1.selectbox("Major Vessels (Fluoroscopy)", list(ca_map))
+        thal = d2.selectbox("Thalassemia", list(thal_map))
 
         st.markdown("<br>", unsafe_allow_html=True)
         submitted = st.form_submit_button("🫀  Assess My Risk", use_container_width=True)
 
-    # — Result
     if submitted:
         with st.spinner("Analysing your data…"):
-            time.sleep(1.2)  # UX: brief loading moment
+            time.sleep(1.0)
 
-        input_data = np.array([[age, sex_val, cp_val, trestbps, chol,
-                                 fbs_val, restecg_val, thalach, exang_val,
-                                 oldpeak, slope_val, ca_val, thal_val]])
-        input_scaled = scaler.transform(input_data)
-        prediction   = model.predict(input_scaled)[0]
-        prob         = model.predict_proba(input_scaled)[0][prediction]
-
-        # Store for report page
-        st.session_state["last_inputs"] = {
-            "age": age, "sex": sex_val, "cp": cp_val,
-            "trestbps": trestbps, "chol": chol, "fbs": fbs_val,
-            "restecg": restecg_val, "thalach": thalach, "exang": exang_val,
-            "oldpeak": oldpeak, "slope": slope_val, "ca": ca_val, "thal": thal_val,
+        inp = {
+            "age": age,
+            "sex": 1 if sex=="Male" else 0,
+            "cp":  cp_map[cp],
+            "trestbps": trestbps,
+            "chol": chol,
+            "fbs": 1 if fbs=="Yes" else 0,
+            "restecg": ecg_map[restecg],
+            "thalach": thalach,
+            "exang": 1 if exang=="Yes" else 0,
+            "oldpeak": oldpeak,
+            "slope": slope_map[slope],
+            "ca": ca_map[ca],
+            "thal": thal_map[thal],
         }
-        st.session_state["last_prediction"] = int(prediction)
-        st.session_state["last_prob"]        = float(prob)
+        vec   = np.array([[inp[f] for f in FEATURES]])
+        vec_s = scaler.transform(vec)
+        pred  = int(model.predict(vec_s)[0])
+        prob  = float(model.predict_proba(vec_s)[0][pred])
+
+        st.session_state.last_inputs     = inp
+        st.session_state.last_prediction = pred
+        st.session_state.last_prob       = prob
 
         st.markdown("---")
         st.markdown("### 📋 Result")
 
-        if prediction == 1:
+        if pred == 1:
             st.markdown(f"""
             <div class='result-high'>
-                <div class='result-title' style='color:#FF6B81;'>
-                    ⚠️ High Risk Detected
-                </div>
-                <div style='color:#8B8FA8; font-size:0.95rem; margin-bottom:20px;'>
-                    Heart Disease indicators present in your profile
-                </div>
-                <div style='font-size:3rem; font-family:"DM Serif Display",serif;
+                <div style='font-family:"DM Serif Display",serif;font-size:1.9rem;
+                            color:#FF6B81;margin-bottom:6px;'>⚠️ High Risk Detected</div>
+                <div style='color:#8B8FA8;font-size:.9rem;margin-bottom:18px;'>
+                    Heart disease indicators present in your profile</div>
+                <div style='font-family:"DM Serif Display",serif;font-size:3rem;
                             color:#E5304A;'>{prob*100:.1f}%</div>
-                <div style='font-size:0.8rem; color:#8B8FA8; letter-spacing:1px;
-                            text-transform:uppercase; margin-top:4px;'>Confidence Score</div>
-            </div>
-            """, unsafe_allow_html=True)
+                <div style='font-size:.75rem;color:#8B8FA8;letter-spacing:1px;
+                            text-transform:uppercase;margin-top:4px;'>Confidence Score</div>
+            </div>""", unsafe_allow_html=True)
         else:
             st.markdown(f"""
             <div class='result-low'>
-                <div class='result-title' style='color:#5ce698;'>
-                    ✅ Low Risk
-                </div>
-                <div style='color:#8B8FA8; font-size:0.95rem; margin-bottom:20px;'>
-                    No significant heart disease indicators detected
-                </div>
-                <div style='font-size:3rem; font-family:"DM Serif Display",serif;
+                <div style='font-family:"DM Serif Display",serif;font-size:1.9rem;
+                            color:#5ce698;margin-bottom:6px;'>✅ Low Risk</div>
+                <div style='color:#8B8FA8;font-size:.9rem;margin-bottom:18px;'>
+                    No significant heart disease indicators detected</div>
+                <div style='font-family:"DM Serif Display",serif;font-size:3rem;
                             color:#5ce698;'>{prob*100:.1f}%</div>
-                <div style='font-size:0.8rem; color:#8B8FA8; letter-spacing:1px;
-                            text-transform:uppercase; margin-top:4px;'>Confidence Score</div>
-            </div>
-            """, unsafe_allow_html=True)
+                <div style='font-size:.75rem;color:#8B8FA8;letter-spacing:1px;
+                            text-transform:uppercase;margin-top:4px;'>Confidence Score</div>
+            </div>""", unsafe_allow_html=True)
 
-        # Probability bar
-        st.markdown("<br>", unsafe_allow_html=True)
-        bar_color = "#E5304A" if prediction == 1 else "#5ce698"
+        bar_color = "#E5304A" if pred==1 else "#5ce698"
         st.markdown(f"""
-        <div style='background:#1e1f2a; border-radius:8px; height:10px; overflow:hidden;'>
-            <div style='background:{bar_color}; width:{prob*100:.1f}%;
-                        height:100%; border-radius:8px;
-                        transition: width 1s ease;'></div>
+        <div style='margin-top:14px;background:#1e1f2a;border-radius:8px;
+                    height:10px;overflow:hidden;'>
+            <div style='background:{bar_color};width:{prob*100:.1f}%;
+                        height:100%;border-radius:8px;'></div>
         </div>
-        <div style='display:flex; justify-content:space-between;
-                    font-size:0.75rem; color:#555770; margin-top:4px;'>
+        <div style='display:flex;justify-content:space-between;
+                    font-size:.72rem;color:#555770;margin-top:3px;'>
             <span>0%</span><span>50%</span><span>100%</span>
-        </div>
-        """, unsafe_allow_html=True)
+        </div>""", unsafe_allow_html=True)
 
-        # Health tips
         st.markdown("### 💡 Recommendations")
         tips = (
             ["Consult a cardiologist promptly.",
-             "Monitor blood pressure and cholesterol weekly.",
-             "Adopt a low-sodium, heart-healthy diet.",
-             "Avoid smoking and reduce alcohol intake.",
+             "Monitor blood pressure & cholesterol weekly.",
+             "Low-sodium, heart-healthy diet.",
+             "Avoid smoking; limit alcohol.",
              "Light aerobic exercise as medically advised."]
-            if prediction == 1 else
+            if pred==1 else
             ["Maintain a balanced, plant-rich diet.",
-             "Keep up 150+ min/week of moderate exercise.",
-             "Annual cardiac check-up is recommended.",
-             "Manage stress with meditation or yoga.",
-             "Stay hydrated and maintain healthy weight."]
+             "150+ min/week of moderate exercise.",
+             "Annual cardiac check-up recommended.",
+             "Manage stress with mindfulness or yoga.",
+             "Keep cholesterol and BP in healthy ranges."]
         )
-        for tip in tips:
-            st.markdown(f"<div class='tip-card'>{'⚠️' if prediction==1 else '✅'} {tip}</div>",
+        for t in tips:
+            st.markdown(f"<div class='tip-card'>{'⚠️' if pred==1 else '✅'} {t}</div>",
                         unsafe_allow_html=True)
 
-        st.info("ℹ️  Head to **📄 Download Report** in the sidebar to save your assessment.", icon="📄")
+        st.info("Go to **📄 Download Report** in the sidebar to save your result.", icon="📄")
 
 
-# ═══════════════════════════════════════════
-#  PAGE 3 — DATA ANALYSIS
-# ═══════════════════════════════════════════
-elif page == "📊  Data Analysis":
-    set_dark_style()
+# ═══════════════════════════════════════════════════════════════
+#  PAGE — DATA ANALYSIS
+# ═══════════════════════════════════════════════════════════════
+elif PAGE == "Data Analysis":
+    dark_theme()
     st.markdown("## 📊 Data Analysis")
-    st.markdown("""
-    <p style='color:#8B8FA8; margin-bottom:28px;'>
-        Exploratory analysis of the Cleveland Heart Disease dataset (n=303).
-    </p>
-    """, unsafe_allow_html=True)
+    st.markdown("<p style='color:#8B8FA8;margin-bottom:24px;'>"
+                "Exploratory analysis of the Cleveland Heart Disease dataset (n=303).</p>",
+                unsafe_allow_html=True)
 
-    # Dataset snapshot metrics
-    c1, c2, c3 = st.columns(3)
-    for col, val, lbl in zip(
-        [c1, c2, c3],
-        [len(df), df["target"].sum(), f"{df['chol'].mean():.0f} mg/dl"],
-        ["Total Patients", "With Heart Disease", "Avg. Cholesterol"]
+    m1, m2, m3 = st.columns(3)
+    for col, v, l in zip(
+        [m1,m2,m3],
+        [len(df), int(df["target"].sum()), f"{df['chol'].mean():.0f} mg/dl"],
+        ["Total Patients","With Heart Disease","Avg Cholesterol"]
     ):
-        with col:
-            st.markdown(f"""
-            <div class='metric-tile'>
-                <div class='metric-value'>{val}</div>
-                <div class='metric-label'>{lbl}</div>
-            </div>
-            """, unsafe_allow_html=True)
+        col.markdown(f"""<div class='metric-tile'>
+            <div class='metric-value'>{v}</div>
+            <div class='metric-label'>{l}</div></div>""",
+            unsafe_allow_html=True)
 
     st.markdown("---")
+    r1l, r1r = st.columns(2)
 
-    row1_l, row1_r = st.columns(2)
-
-    # Chart 1: Age distribution by target
-    with row1_l:
+    with r1l:
         st.markdown("#### Age Distribution by Outcome")
-        fig, ax = plt.subplots(figsize=(6, 4))
-        df[df["target"] == 1]["age"].plot(kind="hist", bins=20, alpha=0.75,
-                                          color="#E5304A", ax=ax, label="Heart Disease")
-        df[df["target"] == 0]["age"].plot(kind="hist", bins=20, alpha=0.65,
-                                          color="#5ce698", ax=ax, label="No Disease")
-        ax.set_xlabel("Age")
-        ax.set_ylabel("Count")
-        ax.legend(facecolor="#1e1f2a", edgecolor="#2A2B38", labelcolor="#F5F0EB")
-        ax.grid(True)
-        fig.tight_layout()
-        st.pyplot(fig)
-        plt.close()
+        fig, ax = plt.subplots(figsize=(6,4))
+        df[df["target"]==1]["age"].plot(kind="hist",bins=20,alpha=.75,
+            color="#E5304A",ax=ax,label="Heart Disease")
+        df[df["target"]==0]["age"].plot(kind="hist",bins=20,alpha=.65,
+            color="#5ce698",ax=ax,label="No Disease")
+        ax.set_xlabel("Age"); ax.set_ylabel("Count")
+        ax.legend(facecolor="#1e1f2a",edgecolor="#2A2B38",labelcolor="#F5F0EB")
+        ax.grid(True); fig.tight_layout(); st.pyplot(fig); plt.close()
 
-    # Chart 2: Heart disease count
-    with row1_r:
+    with r1r:
         st.markdown("#### Disease Prevalence")
-        labels = ["No Disease", "Heart Disease"]
-        sizes  = [len(df[df["target"] == 0]), len(df[df["target"] == 1])]
-        colors = ["#5ce698", "#E5304A"]
-        fig, ax = plt.subplots(figsize=(6, 4))
-        wedges, texts, autotexts = ax.pie(
-            sizes, labels=labels, colors=colors,
-            autopct="%1.1f%%", startangle=90,
-            textprops={"color": "#F5F0EB"},
-            wedgeprops={"edgecolor": "#16171F", "linewidth": 2}
-        )
-        for at in autotexts:
-            at.set_fontsize(11)
-            at.set_fontweight("bold")
-        ax.set_facecolor("#16171F")
-        fig.tight_layout()
-        st.pyplot(fig)
-        plt.close()
+        fig, ax = plt.subplots(figsize=(6,4))
+        sizes = [len(df[df["target"]==0]), len(df[df["target"]==1])]
+        wedges, texts, autos = ax.pie(
+            sizes, labels=["No Disease","Heart Disease"],
+            colors=["#5ce698","#E5304A"], autopct="%1.1f%%", startangle=90,
+            textprops={"color":"#F5F0EB"},
+            wedgeprops={"edgecolor":"#16171F","linewidth":2})
+        for a in autos: a.set_fontsize(11); a.set_fontweight("bold")
+        ax.set_facecolor("#16171F"); fig.tight_layout()
+        st.pyplot(fig); plt.close()
 
-    row2_l, row2_r = st.columns(2)
+    r2l, r2r = st.columns(2)
 
-    # Chart 3: Cholesterol vs target boxplot
-    with row2_l:
+    with r2l:
         st.markdown("#### Cholesterol by Outcome")
-        fig, ax = plt.subplots(figsize=(6, 4))
-        data_no  = df[df["target"] == 0]["chol"]
-        data_yes = df[df["target"] == 1]["chol"]
+        fig, ax = plt.subplots(figsize=(6,4))
         bp = ax.boxplot(
-            [data_no, data_yes],
-            patch_artist=True,
-            widths=0.45,
-            boxprops=dict(linewidth=1.5),
-            medianprops=dict(color="#F5F0EB", linewidth=2),
-            whiskerprops=dict(linewidth=1.2),
-            capprops=dict(linewidth=1.2),
-            flierprops=dict(marker="o", markersize=4, alpha=0.5),
-        )
+            [df[df["target"]==0]["chol"], df[df["target"]==1]["chol"]],
+            patch_artist=True, widths=0.45,
+            medianprops=dict(color="#F5F0EB",linewidth=2),
+            flierprops=dict(marker="o",markersize=4,alpha=.5))
         bp["boxes"][0].set_facecolor("#5ce698")
         bp["boxes"][1].set_facecolor("#E5304A")
-        bp["fliers"][0].set_markerfacecolor("#5ce698")
-        bp["fliers"][1].set_markerfacecolor("#E5304A")
-        ax.set_xticks([1, 2])
-        ax.set_xticklabels(["No Disease", "Heart Disease"])
-        ax.set_ylabel("Cholesterol (mg/dl)")
-        ax.grid(True, axis="y")
-        fig.tight_layout()
-        st.pyplot(fig)
-        plt.close()
+        ax.set_xticks([1,2]); ax.set_xticklabels(["No Disease","Heart Disease"])
+        ax.set_ylabel("Cholesterol (mg/dl)"); ax.grid(True,axis="y")
+        fig.tight_layout(); st.pyplot(fig); plt.close()
 
-    # Chart 4: Max Heart Rate
-    with row2_r:
-        st.markdown("#### Max Heart Rate by Outcome")
-        fig, ax = plt.subplots(figsize=(6, 4))
-        ax.scatter(df[df["target"] == 0]["age"],
-                   df[df["target"] == 0]["thalach"],
-                   alpha=0.55, color="#5ce698", s=22, label="No Disease")
-        ax.scatter(df[df["target"] == 1]["age"],
-                   df[df["target"] == 1]["thalach"],
-                   alpha=0.55, color="#E5304A", s=22, label="Heart Disease")
-        ax.set_xlabel("Age")
-        ax.set_ylabel("Max Heart Rate (bpm)")
-        ax.legend(facecolor="#1e1f2a", edgecolor="#2A2B38", labelcolor="#F5F0EB")
-        ax.grid(True)
-        fig.tight_layout()
-        st.pyplot(fig)
-        plt.close()
+    with r2r:
+        st.markdown("#### Age vs Max Heart Rate")
+        fig, ax = plt.subplots(figsize=(6,4))
+        ax.scatter(df[df["target"]==0]["age"],df[df["target"]==0]["thalach"],
+                   alpha=.55,color="#5ce698",s=22,label="No Disease")
+        ax.scatter(df[df["target"]==1]["age"],df[df["target"]==1]["thalach"],
+                   alpha=.55,color="#E5304A",s=22,label="Heart Disease")
+        ax.set_xlabel("Age"); ax.set_ylabel("Max Heart Rate (bpm)")
+        ax.legend(facecolor="#1e1f2a",edgecolor="#2A2B38",labelcolor="#F5F0EB")
+        ax.grid(True); fig.tight_layout(); st.pyplot(fig); plt.close()
 
-    # Chart 5: Correlation heatmap (full width)
     st.markdown("#### Feature Correlation Heatmap")
-    fig, ax = plt.subplots(figsize=(12, 5))
-    corr = df[features + ["target"]].corr()
-    mask = np.zeros_like(corr)
-    mask[np.triu_indices_from(mask)] = True
-    sns.heatmap(
-        corr, mask=mask, annot=True, fmt=".2f",
-        cmap=sns.diverging_palette(10, 150, as_cmap=True),
-        linewidths=0.5, linecolor="#16171F",
-        ax=ax, annot_kws={"size": 8},
-        cbar_kws={"shrink": 0.8},
-    )
-    ax.tick_params(labelsize=8)
-    fig.tight_layout()
-    st.pyplot(fig)
-    plt.close()
+    fig, ax = plt.subplots(figsize=(12,5))
+    corr = df[FEATURES+["target"]].corr()
+    mask = np.triu(np.ones_like(corr, dtype=bool))
+    sns.heatmap(corr, mask=mask, annot=True, fmt=".2f",
+                cmap=sns.diverging_palette(10,150,as_cmap=True),
+                linewidths=.5, linecolor="#16171F", ax=ax,
+                annot_kws={"size":8}, cbar_kws={"shrink":.8})
+    ax.tick_params(labelsize=8); fig.tight_layout()
+    st.pyplot(fig); plt.close()
 
 
-# ═══════════════════════════════════════════
-#  PAGE 4 — MODEL INSIGHTS
-# ═══════════════════════════════════════════
-elif page == "🧠  Model Insights":
-    set_dark_style()
+# ═══════════════════════════════════════════════════════════════
+#  PAGE — MODEL INSIGHTS
+# ═══════════════════════════════════════════════════════════════
+elif PAGE == "Model Insights":
+    dark_theme()
     st.markdown("## 🧠 Model Insights")
-    st.markdown("""
-    <p style='color:#8B8FA8; margin-bottom:28px;'>
-        Random Forest Classifier trained on 80% of the dataset.
-    </p>
-    """, unsafe_allow_html=True)
+    st.markdown("<p style='color:#8B8FA8;margin-bottom:24px;'>"
+                "Random Forest Classifier · trained on 80% of the dataset.</p>",
+                unsafe_allow_html=True)
 
-    # Performance metrics
-    st.markdown("### ⚡ Performance Metrics")
     m1, m2, m3 = st.columns(3)
-    for col, val, lbl in zip(
-        [m1, m2, m3],
-        [f"{metrics['accuracy']}%", f"{metrics['precision']}%",
-         f"{metrics['recall']}%"],
-        ["Accuracy", "Precision", "Recall"]
+    for col, v, l in zip(
+        [m1,m2,m3],
+        [f"{metrics['accuracy']}%",f"{metrics['precision']}%",f"{metrics['recall']}%"],
+        ["Accuracy","Precision","Recall"]
     ):
-        with col:
-            st.markdown(f"""
-            <div class='metric-tile'>
-                <div class='metric-value'>{val}</div>
-                <div class='metric-label'>{lbl}</div>
-            </div>
-            """, unsafe_allow_html=True)
+        col.markdown(f"""<div class='metric-tile'>
+            <div class='metric-value'>{v}</div>
+            <div class='metric-label'>{l}</div></div>""",
+            unsafe_allow_html=True)
 
-    # Plain-English explanations
-    st.markdown("""
+    st.markdown(f"""
     <div class='card' style='margin-top:20px;'>
-        <div style='font-weight:600; margin-bottom:12px; color:#F5F0EB;'>
-            📖 What do these mean?
+        <div style='font-weight:600;margin-bottom:10px;color:#F5F0EB;'>
+            📖 Plain-English Explanation</div>
+        <div style='font-size:.87rem;color:#8B8FA8;line-height:1.9;'>
+            <b style='color:#F5F0EB;'>Accuracy {metrics['accuracy']}%</b>
+            — The model is correct {metrics['accuracy']}% of the time overall.<br>
+            <b style='color:#F5F0EB;'>Precision {metrics['precision']}%</b>
+            — When it flags "Heart Disease", it is right {metrics['precision']}% of the time.<br>
+            <b style='color:#F5F0EB;'>Recall {metrics['recall']}%</b>
+            — It catches {metrics['recall']}% of all actual heart disease cases.
         </div>
-        <div style='font-size:0.88rem; color:#8B8FA8; line-height:1.9;'>
-            <b style='color:#F5F0EB;'>Accuracy</b> — Out of every 100 predictions,
-            the model gets ~{acc} correct.<br>
-            <b style='color:#F5F0EB;'>Precision</b> — When the model says "Heart Disease",
-            it is correct ~{pr}% of the time.<br>
-            <b style='color:#F5F0EB;'>Recall</b> — The model correctly identifies ~{rec}%
-            of all true heart disease cases.
-        </div>
-    </div>
-    """.format(
-        acc=metrics["accuracy"], pr=metrics["precision"], rec=metrics["recall"]
-    ), unsafe_allow_html=True)
+    </div>""", unsafe_allow_html=True)
 
     st.markdown("---")
-
     col_cm, col_fi = st.columns(2)
 
-    # Confusion Matrix
     with col_cm:
         st.markdown("#### Confusion Matrix")
-        cm   = metrics["cm"]
-        fig, ax = plt.subplots(figsize=(5, 4))
-        cmap = sns.color_palette(["#0a2a15", "#3a0a12"], as_cmap=False)
-        sns.heatmap(
-            cm, annot=True, fmt="d", ax=ax,
-            cmap="RdYlGn_r",
-            linewidths=1, linecolor="#16171F",
-            xticklabels=["No Disease", "Heart Disease"],
-            yticklabels=["No Disease", "Heart Disease"],
-            annot_kws={"size": 14, "weight": "bold", "color": "#F5F0EB"},
-            cbar=False,
-        )
-        ax.set_xlabel("Predicted", labelpad=10)
-        ax.set_ylabel("Actual",    labelpad=10)
+        fig, ax = plt.subplots(figsize=(5,4))
+        sns.heatmap(metrics["cm"], annot=True, fmt="d", ax=ax,
+                    cmap="RdYlGn_r", linewidths=1, linecolor="#16171F",
+                    xticklabels=["No Disease","Heart Disease"],
+                    yticklabels=["No Disease","Heart Disease"],
+                    annot_kws={"size":14,"weight":"bold","color":"#F5F0EB"},
+                    cbar=False)
+        ax.set_xlabel("Predicted",labelpad=10)
+        ax.set_ylabel("Actual",labelpad=10)
         ax.tick_params(labelsize=9)
-        fig.tight_layout()
-        st.pyplot(fig)
-        plt.close()
-        st.caption("Rows = actual class | Columns = predicted class")
+        fig.tight_layout(); st.pyplot(fig); plt.close()
+        st.caption("Rows = actual class · Columns = predicted class")
 
-    # Feature Importance
     with col_fi:
         st.markdown("#### Feature Importance")
-        fi   = pd.Series(metrics["importance"]).sort_values(ascending=True)
-        fig, ax = plt.subplots(figsize=(5, 5))
-        colors = ["#E5304A" if v >= fi.median() else "#8B8FA8" for v in fi.values]
-        bars = ax.barh(fi.index, fi.values, color=colors, height=0.65)
-        ax.set_xlabel("Importance Score")
-        ax.grid(True, axis="x")
-        ax.tick_params(axis="y", labelsize=8.5)
-        fig.tight_layout()
-        st.pyplot(fig)
-        plt.close()
-        st.caption("Red bars = above-median importance")
+        fi = pd.Series(metrics["importance"]).sort_values(ascending=True)
+        fig, ax = plt.subplots(figsize=(5,5))
+        colors = ["#E5304A" if v >= fi.median() else "#555770" for v in fi.values]
+        ax.barh(fi.index, fi.values, color=colors, height=0.65)
+        ax.set_xlabel("Importance Score"); ax.grid(True,axis="x")
+        ax.tick_params(axis="y",labelsize=8.5)
+        fig.tight_layout(); st.pyplot(fig); plt.close()
+        st.caption("Red = above-median importance")
 
     st.markdown("---")
-
-    # Model details
     st.markdown("### 🔧 Model Architecture")
     st.markdown("""
     <div class='card'>
-        <div style='display:grid; grid-template-columns:1fr 1fr; gap:16px;
-                    font-size:0.88rem;'>
+        <div style='display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:.87rem;'>
             <div><span style='color:#8B8FA8;'>Algorithm</span><br>
-                 <span style='color:#F5F0EB; font-weight:600;'>
-                     Random Forest Classifier</span></div>
+                 <span style='color:#F5F0EB;font-weight:600;'>Random Forest Classifier</span></div>
             <div><span style='color:#8B8FA8;'>Estimators</span><br>
-                 <span style='color:#F5F0EB; font-weight:600;'>200 decision trees</span></div>
+                 <span style='color:#F5F0EB;font-weight:600;'>200 decision trees</span></div>
             <div><span style='color:#8B8FA8;'>Max Depth</span><br>
-                 <span style='color:#F5F0EB; font-weight:600;'>8 levels</span></div>
+                 <span style='color:#F5F0EB;font-weight:600;'>8 levels</span></div>
             <div><span style='color:#8B8FA8;'>Preprocessing</span><br>
-                 <span style='color:#F5F0EB; font-weight:600;'>
-                     Standard Scaler (z-score)</span></div>
+                 <span style='color:#F5F0EB;font-weight:600;'>StandardScaler (z-score)</span></div>
             <div><span style='color:#8B8FA8;'>Train / Test Split</span><br>
-                 <span style='color:#F5F0EB; font-weight:600;'>80% / 20%</span></div>
-            <div><span style='color:#8B8FA8;'>Stratified Split</span><br>
-                 <span style='color:#F5F0EB; font-weight:600;'>Yes</span></div>
+                 <span style='color:#F5F0EB;font-weight:600;'>80 % / 20 %</span></div>
+            <div><span style='color:#8B8FA8;'>Stratified</span><br>
+                 <span style='color:#F5F0EB;font-weight:600;'>Yes</span></div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
+    </div>""", unsafe_allow_html=True)
 
 
-# ═══════════════════════════════════════════
-#  PAGE 5 — DOWNLOAD REPORT
-# ═══════════════════════════════════════════
-elif page == "📄  Download Report":
+# ═══════════════════════════════════════════════════════════════
+#  PAGE — DOWNLOAD REPORT
+# ═══════════════════════════════════════════════════════════════
+elif PAGE == "Download Report":
     st.markdown("## 📄 Download Report")
 
     if "last_prediction" not in st.session_state:
         st.markdown("""
-        <div class='card' style='text-align:center; padding:60px;'>
-            <div style='font-size:3rem; margin-bottom:16px;'>🔬</div>
-            <div style='font-family:"DM Serif Display",serif; font-size:1.4rem;
-                        color:#F5F0EB; margin-bottom:8px;'>
-                No Assessment Yet
-            </div>
-            <div style='color:#8B8FA8; font-size:0.9rem;'>
-                Complete the Prediction form first, then return here
+        <div class='card' style='text-align:center;padding:60px 40px;'>
+            <div style='font-size:3rem;margin-bottom:16px;'>🔬</div>
+            <div style='font-family:"DM Serif Display",serif;font-size:1.35rem;
+                        color:#F5F0EB;margin-bottom:10px;'>No Assessment Yet</div>
+            <div style='color:#8B8FA8;font-size:.9rem;'>
+                Complete the <b>Prediction</b> form first, then return here
                 to download your personalised report.
             </div>
-        </div>
-        """, unsafe_allow_html=True)
+        </div>""", unsafe_allow_html=True)
     else:
-        pred  = st.session_state["last_prediction"]
-        prob  = st.session_state["last_prob"]
-        inpts = st.session_state["last_inputs"]
-
-        risk_label = "HIGH RISK" if pred == 1 else "LOW RISK"
-        badge_cls  = "badge-red" if pred == 1 else "badge-green"
+        pred  = st.session_state.last_prediction
+        prob  = st.session_state.last_prob
+        inpts = st.session_state.last_inputs
+        badge = "badge-red" if pred==1 else "badge-green"
+        label = "HIGH RISK" if pred==1 else "LOW RISK"
 
         st.markdown(f"""
         <div class='card'>
-            <div style='margin-bottom:20px;'>
-                <span class='badge {badge_cls}'>{risk_label}</span>
-            </div>
-            <div style='font-family:"DM Serif Display",serif; font-size:1.6rem;
-                        color:#F5F0EB; margin-bottom:6px;'>
-                Your Assessment is Ready
-            </div>
-            <div style='color:#8B8FA8; font-size:0.9rem; line-height:1.6;'>
-                Confidence Score: <strong style='color:#F5F0EB;'>
-                {prob*100:.1f}%</strong><br>
-                Your full report includes your inputs, result, risk level,
+            <div style='margin-bottom:16px;'><span class='{badge}'>{label}</span></div>
+            <div style='font-family:"DM Serif Display",serif;font-size:1.5rem;
+                        color:#F5F0EB;margin-bottom:6px;'>Your Assessment is Ready</div>
+            <div style='color:#8B8FA8;font-size:.88rem;line-height:1.7;'>
+                Confidence Score:
+                <strong style='color:#F5F0EB;'>{prob*100:.1f}%</strong><br>
+                Your report includes all inputs, result, risk level,
                 and personalised health recommendations.
             </div>
-        </div>
-        """, unsafe_allow_html=True)
+        </div>""", unsafe_allow_html=True)
 
-        report_text = generate_report(inpts, pred, prob)
-
+        report = make_report(inpts, pred, prob)
         st.download_button(
-            label="⬇️  Download Report (.txt)",
-            data=report_text,
+            label="⬇️  Download My Report (.txt)",
+            data=report,
             file_name="CardioSense_Report.txt",
             mime="text/plain",
             use_container_width=True,
         )
-
         st.markdown("---")
         st.markdown("### Preview")
-        st.code(report_text, language=None)
+        st.code(report, language=None)
